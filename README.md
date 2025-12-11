@@ -8,7 +8,7 @@ The program takes a convex shape name and a grid step as input. It computes the 
 
 For instace, by running `./main -p ellipsoid -g 0.2`, you can see this in the viewer: 
 
-![gif animation showing several snapshots](http://url/to/ellipsoid.gif)
+![gif animation showing several snapshots](https://github.com/troussil/DigitizedConvexShape/blob/main/images/ellipsoid.gif)
 
 # Build
 
