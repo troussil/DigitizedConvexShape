@@ -1,0 +1,75 @@
+#ifndef DIGITIZEDCVXPOLYGON_H
+#define DIGITIZEDCVXPOLYGON_H
+
+#include <DGtal/base/Common.h>
+#include <DGtal/helpers/StdDefs.h>
+#include <DGtal/kernel/PointVector.h>
+
+#include "DigitizedTriangle.ih"
+
+template<typename KSpace>
+class DigitizedCvxPolygon {
+
+  //------------------------------------------------------------------
+  //--- types
+  //------------------------------------------------------------------
+public:
+
+  using Space   = typename KSpace::Space; 
+  using Point   = typename Space::Point; 
+  using Vector  = typename Space::Vector;
+  using Cell    = typename KSpace::Cell;  
+  using RealVector = typename Space::RealVector; 
+  
+  //------------------------------------------------------------------
+  //--- members
+  //------------------------------------------------------------------
+private: 
+
+  /** Khalimsky space */
+  const KSpace& myKSpace;  
+  /** Input polygon */
+  std::vector<Point> myCvxPolygon;
+  
+public: 
+
+  //------------------------------------------------------------------
+  //--- constructor
+  //------------------------------------------------------------------
+  DigitizedCvxPolygon (const KSpace& aKSpace, std::vector<Point> const& aPolygon):
+    myKSpace(aKSpace), myCvxPolygon(aPolygon.cbegin(),aPolygon.cend()) {
+    assert(myCvxPolygon.size() >= 3); 
+  }
+
+  //------------------------------------------------------------------
+  //--- accessors and other services
+  //------------------------------------------------------------------
+
+  //------------------------------------------------------------------
+  RealVector getUnitNormal() const {
+    Vector u = myCvxPolygon.at(1) - myCvxPolygon.at(0); 
+    Vector v = myCvxPolygon.at( myCvxPolygon.size()-1 ) - myCvxPolygon.at(0);
+    Vector n = u.crossProduct(v);
+    return n.getNormalized(); 
+  }
+  
+  //------------------------------------------------------------------
+  template <typename OutputIterator>
+  void digitize(OutputIterator ito) const {
+
+    //triangulate naively the convex polygon
+    //and digitize every triangle
+    for (int k = 2; k < myCvxPolygon.size(); ++k) {
+
+      auto triangle = DigitizedTriangle<KSpace>(myKSpace,
+						myCvxPolygon[0],
+						myCvxPolygon[k-1],
+						myCvxPolygon[k] ); 
+      triangle.digitize( ito );  
+    }
+
+  }
+  
+};
+
+#endif

@@ -1,0 +1,122 @@
+#ifndef SURFACEMANAGER_H
+#define SURFACEMANAGER_H
+
+#include <DGtal/helpers/Shortcuts.h>
+#include <DGtal/helpers/ShortcutsGeometry.h>
+#include <DGtal/topology/ImplicitDigitalSurface.h>
+
+//--------------------------------------------------------------------------------
+//-- digital surface 
+//--------------------------------------------------------------------------------
+
+template<typename TKSpace>
+class SurfaceManager {
+
+public:
+
+  //--- useful types
+  typedef DGtal::Shortcuts<TKSpace> SH3;
+  typedef typename SH3::KSpace KSpace;
+  typedef typename SH3::Point Point;
+  typedef typename SH3::Vector Vector;
+
+  //--- Surface types
+  typedef typename KSpace::Cell Surfel;
+  typedef std::vector<Surfel> Surfels;
+  typedef std::map<Surfel,std::size_t> SurfelMap; 
+  
+  //--- Mesh types
+  typedef std::vector<std::vector<std::size_t>> MeshFaces;
+  typedef std::vector<Point> MeshVertices;
+  typedef std::map<Point,std::size_t> MeshMap; 
+  
+  //--- Mesh representing the digital surface
+  MeshVertices myVertices; // a vector of discrete points (vertex embedding)
+  MeshFaces myFaces; // a vector of vectors of indices (faces/topology)
+  MeshMap myVMap; //map a discrete point to its index in 'myVertices'
+
+  Surfels mySurfels; // a vector of surfels
+  SurfelMap mySMap; //map a surfel to its index in 'mySurfels'
+  
+  //--------------------------------------------------------------------------------
+  SurfaceManager(): myVertices(), myFaces(), myVMap(), mySurfels(), mySMap()
+  {}
+
+  //--------------------------------------------------------------------------------
+  void clear() {
+    myVertices.clear();
+    myFaces.clear();
+    myVMap.clear();
+    mySurfels.clear();
+    mySMap.clear(); 
+  }
+  
+  //--------------------------------------------------------------------------------
+  bool operator()(Point const& aPoint) const {
+    return this->myVMap.find(aPoint) != this->myVMap.end(); 
+  }
+
+  //--------------------------------------------------------------------------------
+  template <typename KSpace, typename Surface>
+  void buildMesh(KSpace const& aK, Surface const& aSurface) {
+
+    //vertices
+    fillVerticesAndSurfelsFromSurface(aK, aSurface); 
+
+    //maps
+    for (std::size_t idx = 0; idx < mySurfels.size(); ++idx) {
+      mySMap.emplace( mySurfels[idx], idx ); 
+    }
+    for (std::size_t idx = 0; idx < myVertices.size(); ++idx) {
+      myVMap.emplace( myVertices[idx], idx ); 
+    }
+
+    //faces
+    fillFacesFromSurfaceAndMap(aK, aSurface);
+
+  }
+        
+private:
+  
+  //--------------------------------------------------------------------------------
+  template <typename KSpace, typename Surface>
+  void fillVerticesAndSurfelsFromSurface(KSpace const& aK, Surface const& aSurface) {
+    
+    std::set<Point> vertexSet; 
+    for (const auto& s: SH3::getSurfelRange(aSurface)) {
+
+      mySurfels.push_back(aK.unsigns(s)); 
+      
+      auto surfelVertices = SH3::getPrimalVertices(aK, s, true);	
+      for (const auto& v: surfelVertices) {
+	vertexSet.insert(aK.uCoords(v)); 
+      }
+    }
+
+    std::copy(vertexSet.begin(), vertexSet.end(), std::back_inserter(myVertices)); 
+  }
+
+  //--------------------------------------------------------------------------------
+  template <typename KSpace, typename Surface>
+  void fillFacesFromSurfaceAndMap(KSpace const& aK, Surface const& aSurface) {
+  
+    for (const auto& s: SH3::getSurfelRange(aSurface)) {
+
+      auto surfelVertices = SH3::getPrimalVertices(aK, s, true);
+      std::vector<std::size_t> surfelIndices; 
+      for (const auto& v: surfelVertices) {
+	auto it = myVMap.find( aK.uCoords(v) );
+	assert(it != myVMap.end());
+	surfelIndices.push_back(it->second); 
+      }
+
+      myFaces.push_back( surfelIndices ); 
+    }
+ 
+  }
+    
+    
+};
+
+
+#endif

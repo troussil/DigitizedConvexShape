@@ -1,0 +1,337 @@
+#ifndef DIGITIZEDTRIANGLE_H
+#define DIGITIZEDTRIANGLE_H
+
+#include <DGtal/base/Common.h>
+#include <DGtal/helpers/StdDefs.h>
+#include <DGtal/kernel/PointVector.h>
+
+template<typename KSpace>
+class DigitizedTriangle {
+
+  //------------------------------------------------------------------
+  //--- types
+  //------------------------------------------------------------------
+public:
+
+  using Space     = typename KSpace::Space; 
+  using Integer   = typename Space::Integer;
+  using Point     = typename Space::Point; 
+  using Vector    = typename Space::Vector;
+  using Cell      = typename KSpace::Cell; 
+  using Cells     = typename KSpace::Cells; 
+  using Dimension = typename Space::Dimension; 
+  
+  //------------------------------------------------------------------
+  //--- members
+  //------------------------------------------------------------------
+private: 
+
+  /** Khalimsky space */
+  const KSpace& myKSpace;  
+
+  /** Input triangle */
+  std::array<Point,3> myTriangle;
+  
+  /** useful data */
+  //parameters of a(digital plane
+  //whose myTriangle is a upper face 
+  Vector myN;      //normal vector
+  Vector myS;      //shift (-1,0 or 1 at every coordinate)
+  Integer myMu;    //offset
+  Integer myOmega; //thickness
+  
+public: 
+
+  //------------------------------------------------------------------
+  //--- constructor
+  //------------------------------------------------------------------
+  DigitizedTriangle (const KSpace& aKSpace,
+	    Point const& aP, Point const& aQ, Point const& aR):
+    myKSpace(aKSpace), myTriangle(), myN(), myS(), myMu(), myOmega() {
+
+    myTriangle = {aP, aQ, aR};
+    Vector u = aQ - aP;
+    Vector v = aR - aP;
+    Vector n = u.crossProduct(v);  
+
+    DGtal::IntegerComputer<Integer> myIC; 
+    Integer g = myIC.gcd(myIC.gcd(n[0], n[1]), n[2]); 
+    myN = Vector( n[0]/g, n[1]/g, n[2]/g );
+    myOmega = myN.norm1(); 
+    myMu = aP.dot(myN) - myOmega + 1;
+    
+    myS = myN;
+    for (int i = 0; i < 3; i++)
+      if (myS[i] != 0)
+	myS[i] /= abs(myS[i]);
+    
+  }
+
+  //------------------------------------------------------------------
+  //--- accessors and other services
+  //------------------------------------------------------------------
+  Vector normal() const {
+    return myN; 
+  }
+  
+  //------------------------------------------------------------------
+  template <typename OutputIterator>
+  void digitize(OutputIterator ito) const {
+    
+    //breadth-first search from the surfel incident to the vertices
+    std::vector<Cell> seeds; 
+    getSeeds( std::back_inserter(seeds) );
+    std::set<Cell> cells;
+    bfs(seeds, cells);
+    //return the final cell set
+    for (auto const& c: cells) {
+      *ito++ = c; 
+    }
+  }
+  
+private:   
+  //------------------------------------------------------------------
+  //--- internals
+  //------------------------------------------------------------------
+
+  //------------------------------------------------------------------
+  template <typename OutputIterator>
+  inline void getSeeds(OutputIterator ito) const {
+    for (int k = 0; k < 3; k++) {
+      getSeedsFromPoint(myTriangle[k], ito); 
+    }
+  }
+  
+  //------------------------------------------------------------------
+  template <typename OutputIterator>
+  inline void getSeedsFromPoint(const Point& aPoint, OutputIterator ito) const {
+    Cell pointel = myKSpace.uPointel(aPoint); 
+    Cells candidates = myKSpace.uCoFaces(pointel);
+    for (auto const& cell : candidates) {
+      if (myKSpace.uIsSurfel(cell)) {
+	if (inPlane(cell))
+	  *ito++ = cell; 
+      }
+    }
+  }
+
+  //------------------------------------------------------------------
+  template <typename OutputIterator>
+  inline void surfelNeighborhood(Cell const& aLinel,
+				 Dimension const& i, Dimension const& j,
+				 bool flag, OutputIterator ito) const {
+    ASSERT(myKSpace.uDim(aLinel) == 1);
+    
+    *ito++ = myKSpace.uIncident( aLinel, j, true );
+    *ito++ = myKSpace.uIncident( aLinel, i, flag );
+    *ito++ = myKSpace.uIncident( aLinel, j, false );
+  }
+  
+  //------------------------------------------------------------------
+  template <typename OutputIterator>
+  inline void surfelNeighborhood(Cell const& aSurfel, OutputIterator ito) const {
+    ASSERT(myKSpace.uDim(aSurfel) == 2);
+
+    Dimension orthDir =  *myKSpace.uOrthDirs( aSurfel ); 
+    for (typename KSpace::DirIterator it = myKSpace.uDirs( aSurfel );
+	 it != 0; ++it ) {
+      for (int flag = 0; flag <= 1; ++flag) {
+	Cell linel = myKSpace.uIncident( aSurfel, *it, flag ); 
+	surfelNeighborhood( linel, *it, orthDir, flag, ito ); 
+      }
+    }
+    
+  }
+  
+  //------------------------------------------------------------------
+  inline void bfs(std::vector<Cell> const& seeds, std::set<Cell>& nodes) const {
+    
+    std::queue<Cell> queue;
+    for (auto const& seed: seeds) {
+      nodes.insert(seed); 
+      queue.push(seed);
+    }
+    
+    while (! queue.empty()) {
+      
+      auto node = queue.front(); 
+      queue.pop();
+
+      std::vector<Cell> cells;
+      surfelNeighborhood( node, std::back_inserter(cells) ); 
+      ASSERT( cells.size() == 12 );  
+      for (auto c: cells) {
+
+	if ( inPlane(c) && surfelCovered(c) ) {
+	  
+	  auto it = nodes.find(c); 
+	  if (it == nodes.end()) {
+	    queue.push(c);
+	    nodes.insert(c);
+	  }
+	  
+	}
+      }
+    }
+  }
+  
+  //------------------------------------------------------------------
+  inline bool inPlane(Point const& aP) const {
+    Integer height = aP.dot(myN); 
+    return (myMu <= height) && (height < myMu + myOmega); 
+  }
+
+  //------------------------------------------------------------------
+  template <typename OutputIterator>
+  inline void linelVertices(Cell const& aLinel, OutputIterator ito) const {
+    ASSERT(myKSpace.uDim(aLinel) == 1);
+    typename KSpace::DirIterator it = myKSpace.uDirs( aLinel );
+    Cell p0 = myKSpace.uIncident( aLinel, *it, true );
+    Cell p1 = myKSpace.uIncident( aLinel, *it, false );
+    *ito++ = myKSpace.uCoords(p0);
+    *ito++ = myKSpace.uCoords(p1);
+  }
+  
+  //------------------------------------------------------------------
+  template <typename OutputIterator>
+  inline void surfelVertices(Cell const& aSurfel, OutputIterator ito) const {
+    ASSERT(myKSpace.uDim(aSurfel) == 2);
+
+    typename KSpace::DirIterator it = myKSpace.uDirs( aSurfel );
+    Cell linel1 = myKSpace.uIncident( aSurfel, *it, true );
+    linelVertices(linel1, ito); 
+    Cell linel2 = myKSpace.uIncident( aSurfel, *it, false );
+    linelVertices(linel2, ito); 
+  }
+  
+  
+  //------------------------------------------------------------------
+  inline bool inPlane(Cell const& aC) const {
+    std::vector<Point> vertices;
+    surfelVertices(aC, std::back_inserter(vertices));
+    for (auto const& p: vertices) {
+      if (! inPlane(p))
+	return false;
+    }
+    return true; 
+  }
+
+  //------------------------------------------------------------------
+  inline bool projectionInTriangle(Point const& aP) const {
+    
+    Vector u, v;
+    for (int k = 0; k < 3; k++) {
+      u = myTriangle[(k+1)%3] - myTriangle[k];
+      v = aP - myTriangle[k];
+      if ( (u.crossProduct(myS)).dot(v) > 0 ) {
+	 return false; 
+      }
+    }
+    return true;
+    
+  }
+
+  //------------------------------------------------------------------
+  inline int sign(Integer const& x) const {
+    if (x > 0) return 1;
+    if (x < 0) return -1;
+    return 0;
+  }
+
+  //------------------------------------------------------------------
+  inline bool projectionInSegment(Point const& aP, Vector const& u,
+				  Point const& aQ) const {
+    //check whether the projection of aQ is in the segment
+    //starting from aP in direction u 
+    Vector v = aQ-aP;
+    Integer pos = u.dot(v); 
+    return (0 <= pos) && (pos <= u.dot(u));      
+  }
+  
+  //------------------------------------------------------------------
+  inline bool projectionContainsSegment(Point const& aP, Vector const& u,
+					Point const& aQ1, Point const& aQ2) const {
+    //check whether the projection of aQ1 and aQ2 contains the segment
+    //starting from aP in direction u 
+    Integer pos1 = u.dot(aQ1-aP); 
+    Integer pos2 = u.dot(aQ2-aP); 
+    return ( ( (pos1 < 0) && (pos2 > u.dot(u)) ) ||
+	     ( (pos2 < 0) && (pos1 > u.dot(u)) ) );      
+  }
+  
+  //------------------------------------------------------------------
+  inline bool onEitherSide(Point const& aP1, Point const& aP2,
+			   Point const& aQ1, Point const& aQ2) const {
+    //aQ1, aQ2 are on either side of the plane passing by aP1, aP2, aP2+myS
+    Vector u = aP2-aP1;
+    int s1 = sign( (u.crossProduct(myS)).dot(aQ1-aP1) );
+    int s2 = sign( (u.crossProduct(myS)).dot(aQ2-aP1) );
+    //degenerate cases
+    if (s1 == 0) {
+      if (s2 == 0) {
+	//two parallel segments
+	return ( projectionInSegment(aP1, u, aQ1) ||
+		 projectionInSegment(aP1, u, aQ2) ||
+		 projectionContainsSegment(aP1, u, aQ1, aQ2) );
+      } else {
+	//aQ1 is in the the plane passing by aP1, aP2, aP2+myS
+	return projectionInSegment(aP1, u, aQ1);
+      }
+    } else {
+      if (s2 == 0) { 
+	//aQ2 is in the the plane passing by aP1, aP2, aP2+myS
+	return projectionInSegment(aP1, u, aQ2);
+      } else { //general case
+	return (s1*s2 < 0);
+      }
+    }
+  }
+
+  //------------------------------------------------------------------
+  inline bool segmentIntersection(Point const& aP1, Point const& aP2,
+			       Point const& aQ1, Point const& aQ2) const {
+    //projections along myS of segments aP1aP2 and aQ1aQ2 intersect each other 
+    return onEitherSide(aP1, aP2, aQ1, aQ2) && onEitherSide(aQ1, aQ2, aP1, aP2);  
+  }
+  //------------------------------------------------------------------
+  inline bool atLeastOneTriangleEdgeIntersection(Point const& aP1, Point const& aP2) const {
+    //check whether projections along myS of segment aP1aP2
+    //intersect at least one edge of the triangle
+    return segmentIntersection(aP1, aP2, myTriangle[0], myTriangle[1])
+      || segmentIntersection(aP1, aP2, myTriangle[1], myTriangle[2])
+      || segmentIntersection(aP1, aP2, myTriangle[2], myTriangle[0]); 
+  }
+  //------------------------------------------------------------------
+  inline bool linelCovered(Point const& aP1, Point const& aP2) const {
+    //both projection or a triangle edge intersection
+    return ( (projectionInTriangle(aP1) && projectionInTriangle(aP2))
+	     || atLeastOneTriangleEdgeIntersection(aP1, aP2) ); 
+  }
+  //------------------------------------------------------------------
+  inline bool linelCovered(Cell const& aL) const {
+    std::vector<Point> vertices;
+    linelVertices(aL, std::back_inserter(vertices)); 
+    return linelCovered(vertices.at(0), vertices.at(1));  
+  }
+
+    //------------------------------------------------------------------
+  inline bool surfelCovered(Cell const& aSurfel) const {
+    //'true' iff one of the incident linels is covered
+    ASSERT(myKSpace.uDim(aSurfel) == 2);
+
+    for (typename KSpace::DirIterator it = myKSpace.uDirs( aSurfel );
+	 it != 0; ++it) {
+      Cell linel1 = myKSpace.uIncident( aSurfel, *it, true );
+      if (linelCovered(linel1))
+	  return true;
+      Cell linel2 = myKSpace.uIncident( aSurfel, *it, false );
+      if (linelCovered(linel2))
+	  return true;
+    }
+    
+    return false; 
+  }
+
+};
+
+#endif

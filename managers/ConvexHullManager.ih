@@ -1,0 +1,52 @@
+#ifndef CONVEXHULLMANAGER_H
+#define CONVEXHULLMANAGER_H
+
+#include <DGtal/helpers/Shortcuts.h>
+#include <DGtal/geometry/tools/QuickHull.h>
+
+//--------------------------------------------------------------------------------
+//-- convex hull
+//--------------------------------------------------------------------------------
+template <typename TKSpace>
+class ConvexHullManager {
+
+public:
+  
+  //--- useful types
+  typedef DGtal::Shortcuts<TKSpace> SH3;
+  typedef typename SH3::KSpace KSpace;
+  typedef typename SH3::Point Point;
+  typedef typename SH3::Vector Vector;
+
+  //--- Mesh types
+  typedef std::vector<std::vector<std::size_t>> MeshFaces;
+  typedef std::vector<Point> MeshVertices;
+
+  //--- Mesh representing the convex hull
+  MeshVertices myVertices; // a vector of discrete points (vertex embedding)
+  MeshFaces myFaces; // a vector of vectors of indices (faces/topology)
+
+  //--- hull types and data
+  typedef DGtal::ConvexHullIntegralKernel< 3 > Kernel3D;
+  typedef DGtal::QuickHull< Kernel3D >         QuickHull3D;
+
+  QuickHull3D myHull;
+
+  //--------------------------------------------------------------------------------
+  ConvexHullManager():
+    myVertices(), myFaces() {}
+
+  //--------------------------------------------------------------------------------
+  void build(MeshVertices const& aPointSet) {
+      
+    myHull.setInput( aPointSet );
+    myHull.computeConvexHull();
+    myHull.getVertexPositions(myVertices);
+    myHull.getFacetVertices(myFaces);
+      
+  }
+
+}; 
+
+
+#endif
