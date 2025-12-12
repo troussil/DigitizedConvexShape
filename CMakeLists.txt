@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 PROJECT(DemoDGtal)
 
+set(CMAKE_CXX_STANDARD 17)
 FIND_PACKAGE(DGtal REQUIRED)
 
 ADD_EXECUTABLE(main main.cpp)
