@@ -12,7 +12,7 @@ For instace, by running `./main -p ellipsoid -g 0.2`, you can see this in the vi
 
 # Build
 
-Once [DGtal](https://www.dgtal.org/) is built (with the [Polyscope](https://polyscope.run/) option enabled), you can compile as follows: 
+Once [DGtal](https://www.dgtal.org/) is built (with the [Polyscope](https://polyscope.run/)  `DGTAL_POLYSCOPE_VIEWER` option enabled, ), you can compile as follows: 
 - `mkdir build`
 - `cd build`
 - `cmake .. -DDGtal_dir=<path to your DGtal build directory> -DCMAKE_BUILD_TYPE=Release`
